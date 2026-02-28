@@ -1,7 +1,42 @@
 import os
 import sqlite3
+import json
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+
+# ============================================================
+# FILE PATHS & CLOUD CONFIG
+# ============================================================
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "openpos.db")
+CLOUD_CONFIG_FILE = os.path.join(BASE_DIR, "cloud_config.json")
+
+
+def load_cloud_config():
+    if not os.path.exists(CLOUD_CONFIG_FILE):
+        return {
+            "cloud_url": "",
+            "store_code": "",
+            "branch_name": "",
+            "sync_mode": "local"  # local / cloud / hybrid
+        }
+    try:
+        with open(CLOUD_CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {
+            "cloud_url": "",
+            "store_code": "",
+            "branch_name": "",
+            "sync_mode": "local"
+        }
+
+
+def save_cloud_config(cfg):
+    with open(CLOUD_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=4)
+
 
 # ============================================================
 # DATABASE
@@ -9,9 +44,7 @@ from tkinter import ttk, messagebox, simpledialog
 
 class Database:
     def __init__(self):
-        base = os.path.dirname(os.path.abspath(__file__))
-        self.db_path = os.path.join(base, "openpos.db")
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(DB_PATH)
         self.cur = self.conn.cursor()
         self._init_schema()
 
@@ -235,7 +268,7 @@ class LoginWindow:
         frame = ttk.Frame(root, padding=30)
         frame.pack(expand=True)
 
-        ttk.Label(frame, text="OPENPOS 1.65", font=("Segoe UI", 26, "bold")).pack(pady=10)
+        ttk.Label(frame, text="kleverRetail 1.7.1", font=("Segoe UI", 26, "bold")).pack(pady=10)
         ttk.Label(frame, text="Staff Login", font=("Segoe UI", 18)).pack(pady=10)
 
         ttk.Label(frame, text="Username").pack(anchor="w")
@@ -282,7 +315,7 @@ class TopBar:
         frame = ttk.Frame(root, padding=10)
         frame.pack(fill="x")
 
-        ttk.Label(frame, text="OPENPOS 1.65", font=("Segoe UI", 18, "bold")).pack(side="left")
+        ttk.Label(frame, text="kleverRetail 1.7.1", font=("Segoe UI", 18, "bold")).pack(side="left")
 
         self.search = ttk.Entry(frame, width=40)
         self.search.pack(side="left", padx=20)
@@ -301,7 +334,7 @@ class SideBar:
         frame = ttk.Frame(root, padding=10)
         frame.pack(side="left", fill="y")
 
-        for name in ("Checkout", "Items", "Orders", "Account"):
+        for name in ("Checkout", "Items", "Orders", "Account", "Cloud Connect"):
             ttk.Button(frame, text=name, width=20,
                        command=lambda n=name: on_nav(n)).pack(pady=5)
 
@@ -681,6 +714,64 @@ class AccountTab:
 
 
 # ============================================================
+# CLOUD CONNECT TAB
+# ============================================================
+
+class CloudConnectTab:
+    def __init__(self, parent):
+        self.cfg = load_cloud_config()
+
+        frame = ttk.Frame(parent, padding=20)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Cloud Connect", font=("Segoe UI", 20, "bold")).pack(pady=(0, 10))
+
+        ttk.Label(frame, text="Cloud API URL").pack(anchor="w")
+        self.url_entry = ttk.Entry(frame)
+        self.url_entry.insert(0, self.cfg.get("cloud_url", ""))
+        self.url_entry.pack(fill="x", pady=5)
+
+        ttk.Label(frame, text="Store Code").pack(anchor="w")
+        self.store_entry = ttk.Entry(frame)
+        self.store_entry.insert(0, self.cfg.get("store_code", ""))
+        self.store_entry.pack(fill="x", pady=5)
+
+        ttk.Label(frame, text="Branch Name").pack(anchor="w")
+        self.branch_entry = ttk.Entry(frame)
+        self.branch_entry.insert(0, self.cfg.get("branch_name", ""))
+        self.branch_entry.pack(fill="x", pady=5)
+
+        ttk.Label(frame, text="Sync Mode").pack(anchor="w")
+        self.sync_var = tk.StringVar(value=self.cfg.get("sync_mode", "local"))
+        self.sync_combo = ttk.Combobox(
+            frame,
+            textvariable=self.sync_var,
+            values=["local", "cloud", "hybrid"],
+            state="readonly"
+        )
+        self.sync_combo.pack(fill="x", pady=5)
+
+        ttk.Button(frame, text="Save Settings", command=self.save).pack(pady=10)
+
+        info = (
+            "local  – use only local SQLite\n"
+            "cloud  – prefer cloud API (when implemented)\n"
+            "hybrid – local with optional cloud sync"
+        )
+        ttk.Label(frame, text=info, justify="left").pack(anchor="w", pady=5)
+
+    def save(self):
+        cfg = {
+            "cloud_url": self.url_entry.get().strip(),
+            "store_code": self.store_entry.get().strip(),
+            "branch_name": self.branch_entry.get().strip(),
+            "sync_mode": self.sync_var.get()
+        }
+        save_cloud_config(cfg)
+        messagebox.showinfo("Saved", "Cloud settings updated.")
+
+
+# ============================================================
 # POS WINDOW
 # ============================================================
 
@@ -716,6 +807,8 @@ class POSWindow:
             self.current_page = OrdersTab(self.content)
         elif name == "Account":
             self.current_page = AccountTab(self.content, self.staff, on_theme_change=self.apply_theme)
+        elif name == "Cloud Connect":
+            self.current_page = CloudConnectTab(self.content)
 
     def open_account(self):
         self.navigate("Account")
@@ -819,7 +912,7 @@ class POSWindow:
 
 def main():
     root = tk.Tk()
-    root.title("OPENPOS 1.65 Cloud (cbase)")
+    root.title("kleverRetail 1.7.1 (cbase)")
     root.geometry("1200x750")
     root.minsize(1000, 650)
     LoginWindow(root)
